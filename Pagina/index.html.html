@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Galaxia ligera — Te Amo</title>
+  <style>
+    :root{--bg1:#05060b;--accent:#ff5b92}
+    html,body{height:100%;margin:0}
+    body{
+      background: radial-gradient(circle at 30% 20%, #091026 0%, var(--bg1) 60%);
+      overflow:hidden;font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial;
+      color:#fff;display:flex;align-items:center;justify-content:center
+    }
+    #c{display:block;width:100vw;height:100vh}
+    .ui{position:fixed;left:12px;top:12px;background:rgba(0,0,0,0.28);padding:8px 10px;border-radius:8px;font-size:14px;backdrop-filter:blur(4px)}
+    .credit{position:fixed;right:12px;bottom:12px;color:rgba(255,255,255,0.6);font-size:13px}
+    .controls button{margin-right:8px}
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div class="ui controls">
+    <button id="toggle">Pausar</button>
+    <label style="font-size:13px;margin-left:6px">Intensidad:
+      <select id="perf" style="margin-left:6px;font-size:13px">
+        <option value="low">Baja</option>
+        <option value="med">Media</option>
+        <option value="high">Alta</option>
+      </select>
+    </label>
+  </div>
+  <div class="credit">Versión ligera — Guarda como <code>galaxia-te-amo-lite.html</code></div>
+
+  <script>
+    // Versión optimizada: menos partículas, sin sombras ni gradientes costosos
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    let w = innerWidth, h = innerHeight;
+    let DPR = Math.max(1, Math.min(1.5, window.devicePixelRatio || 1)); // limitar DPR para rendimiento
+
+    function setSize(){
+      DPR = Math.max(1, Math.min(1.5, window.devicePixelRatio || 1));
+      w = innerWidth; h = innerHeight;
+      canvas.width = Math.floor(w * DPR);
+      canvas.height = Math.floor(h * DPR);
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      ctx.setTransform(DPR,0,0,DPR,0,0);
+    }
+    setSize();
+    window.addEventListener('resize', ()=>{ setSize(); makeStars(); });
+
+    // parameters adjustable for performance
+    const settings = { low: 50, med: 120, high: 220 };
+    let particleCount = settings.med;
+
+    // simple starfield for background (static positions)
+    let stars = [];
+    function makeStars(){
+      stars = [];
+      const count = Math.max(60, Math.floor((w+h)/20));
+      for(let i=0;i<count;i++) stars.push({x: Math.random()*w, y: Math.random()*h, r: Math.random()*1.4 + 0.3, a: Math.random()*0.8 + 0.2});
+    }
+
+    // lightweight particles that render as small text
+    let particles = [];
+    const words = ['te amo','princesa','mi fisio', 'mi noviecita']; // repeated simple array
+    function makeParticles(){
+      particles = [];
+      const arms = 3;
+      for(let i=0;i<particleCount;i++){
+        const arm = i % arms;
+        const t = i/particleCount;
+        const radius = Math.pow(Math.random(), 0.8) * Math.min(w,h) * 0.45;
+        const angle = (arm/arms)*Math.PI*2 + t*Math.PI*4 + (Math.random()-0.5)*0.6;
+        const speed = 0.0006 + Math.random()*0.0012;
+        const size = Math.floor(10 + Math.random()*12);
+        const hue = 330 + Math.random()*30;
+        const alpha = 0.6 + Math.random()*0.4;
+        particles.push({radius, angle, speed, size, hue, alpha, text: words[i%words.length]});
+      }
+    }
+
+    // mouse/touch interaction (low cost)
+    const mouse = {x:null,y:null,active:false};
+    window.addEventListener('mousemove', e=>{ mouse.x=e.clientX; mouse.y=e.clientY; mouse.active=true; });
+    window.addEventListener('mouseleave', ()=>{ mouse.active=false; });
+    window.addEventListener('touchstart', e=>{ const t=e.touches[0]; mouse.x=t.clientX; mouse.y=t.clientY; mouse.active=true; });
+    window.addEventListener('touchend', ()=>{ mouse.active=false; });
+
+    // animation control
+    let running = true;
+    document.getElementById('toggle').addEventListener('click', ()=>{ running=!running; document.getElementById('toggle').textContent = running ? 'Pausar' : 'Reanudar'; if(running) requestAnimationFrame(loop); });
+    document.getElementById('perf').addEventListener('change', (e)=>{ particleCount = settings[e.target.value]; makeParticles(); });
+
+    makeStars(); makeParticles();
+
+    // draw frame (minimal, no expensive operations)
+    let last = performance.now();
+    function loop(now){
+      if(!running) return;
+      const dt = Math.min(0.05, (now - last)/1000); last = now;
+
+      // clear with slight fade for subtle trails (cheap)
+      ctx.fillStyle = 'rgba(5,6,11,0.9)';
+      ctx.fillRect(0,0,w,h);
+
+      // draw static stars
+      ctx.globalCompositeOperation = 'source-over';
+      for(const s of stars){
+        ctx.globalAlpha = s.a;
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+        ctx.fill();
+      }
+
+      // center glow (very cheap circle)
+      ctx.globalAlpha = 0.06;
+      ctx.fillStyle = 'white';
+      ctx.beginPath();
+      ctx.arc(w/2, h/2, Math.min(w,h)*0.25, 0, Math.PI*2);
+      ctx.fill();
+
+      // draw particles as simple text without shadows
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for(const p of particles){
+        // simple rotation
+        p.angle += p.speed * 60 * dt;
+        p.radius += 0.02 * dt; // very slow outward drift
+        if(p.radius > Math.max(w,h)) p.radius *= 0.5;
+
+        let x = w/2 + Math.cos(p.angle) * p.radius;
+        let y = h/2 + Math.sin(p.angle) * p.radius;
+
+        // small mouse push (cheap math)
+        if(mouse.active){
+          const dx = mouse.x - x; const dy = mouse.y - y; const d2 = dx*dx+dy*dy;
+          if(d2 < 16000){ // only affect nearby
+            const f = 1 - (d2/16000);
+            x -= dx * 0.02 * f;
+            y -= dy * 0.02 * f;
+          }
+        }
+
+        ctx.globalAlpha = p.alpha * (0.7 + 0.3*Math.sin(now*0.001 + p.size));
+        ctx.fillStyle = `hsl(${p.hue} 100% ${35 + p.size*0.4}%)`;
+        ctx.font = `${Math.max(9, p.size)}px system-ui, Arial`;
+        ctx.fillText(p.text, Math.round(x), Math.round(y));
+      }
+
+      requestAnimationFrame(loop);
+    }
+
+    requestAnimationFrame(loop);
+
+  </script>
+</body>
+</html>
